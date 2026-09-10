@@ -21,10 +21,30 @@ if the code does not exist.
 Requires Java 21 and Docker. Gradle is not needed, the wrapper handles it.
 
 ```bash
+Credentials are not committed. Pick a username and password and export them. Both the
+container and the application read the same two variables, so they cannot drift apart:
+
+```bash
+export DB_USERNAME=urlshortener
+export DB_PASSWORD=pick-your-own
+```
+
+In PowerShell:
+
+```powershell
+$env:DB_USERNAME = "urlshortener"; $env:DB_PASSWORD = "pick-your-own"
+```
+
+These last only for the current shell session, so set them again in each new terminal, or
+add them to your shell profile.
+
+Create the container:
+
+```bash
 docker run --name url-shortener-db \
   -e POSTGRES_DB=urlshortener \
-  -e POSTGRES_USER=urlshortener \
-  -e POSTGRES_PASSWORD=localdev \
+  -e POSTGRES_USER=$DB_USERNAME \
+  -e POSTGRES_PASSWORD=$DB_PASSWORD \
   -p 5432:5432 -d postgres:17
 ```
 
@@ -34,11 +54,22 @@ On later runs the container already exists, so start it instead:
 docker start url-shortener-db
 ```
 
-Run the app. Flyway applies pending migrations on startup:
+Run the app in a shell where both variables are set. Flyway applies pending migrations on
+startup:
 
 ```bash
 ./gradlew bootRun
 ```
+
+If either variable is unset, startup fails when Flyway cannot connect, and the error
+carries the unresolved placeholder as the username:
+
+```
+FATAL: password authentication failed for user "${DB_USERNAME}"
+```
+
+Seeing `${DB_USERNAME}` rather than a real username in that message means the variables
+were not exported in the shell you ran from.
 
 Build and run tests:
 
@@ -64,7 +95,7 @@ takes different arguments, so use `curl.exe` there.
 Inspect the database:
 
 ```bash
-docker exec url-shortener-db psql -U urlshortener -d urlshortener -c "SELECT * FROM urls;"
+docker exec url-shortener-db psql -U $DB_USERNAME -d urlshortener -c "SELECT * FROM urls;"
 ```
 
 Reset to a clean schema by destroying the container. Flyway replays every migration from
@@ -135,6 +166,15 @@ Boot 4 renamed several starters, so most tutorials will not match this build fil
 starter instead of adding `flyway-core` by hand, and `spring-boot-starter-test` is split
 into per-feature test starters.
 
+**Database credentials come from the environment.** `application.yml` holds
+`${DB_USERNAME}` and `${DB_PASSWORD}` rather than literal values, so no credential is
+committed. Spring resolves the placeholders from environment variables at startup; if one
+is unset the literal placeholder reaches the driver and the connection is rejected, which
+names the missing variable in the error. Blank fields for the reader to fill in would have worked
+too, but that means editing a tracked file, which leaves the repository permanently dirty
+and makes committing a real password an easy mistake. The connection URL is left literal
+since a localhost address is not sensitive.
+
 **Postgres driver is `runtimeOnly`.** It is on the runtime classpath but not the compile
 classpath, so application code cannot import `org.postgresql.*` and the database stays a
 configuration concern.
@@ -149,8 +189,6 @@ Deliberate. The project was scoped to two endpoints and stops there.
 - A code collision returns 500.
 - No authentication, analytics, custom aliases or expiry.
 - Container data is not on a volume, so removing the container discards it.
-- The local database password is committed. It is a throwaway credential for a container
-  listening only on localhost.
 
 ## Structure
 

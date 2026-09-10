@@ -3,8 +3,8 @@ spring:
         name: url-shortener
     datasource:
         url: jdbc:postgresql://localhost:5432/urlshortener
-        username: urlshortener
-        password: localdev
+        username: ${DB_USERNAME}
+        password: ${DB_PASSWORD}
     jpa:
         hibernate:
             ddl-auto: validate
